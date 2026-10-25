@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ClearSave</title>
+<meta name="description" content="Ad-free video and audio downloader for YouTube, X and Instagram. Original quality, no ads.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ClearSave">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0c14" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef2ff" media="(prefers-color-scheme: light)">
+<meta name="format-detection" content="telephone=no">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="orbs" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+
+<main><div class="stage" id="stage">
+
+  <!-- access code (only shown when the server sets ACCESS_CODE) -->
+  <section class="screen" id="s-lock">
+    <div class="hero">
+      <div class="logo"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="14" width="18" height="12" rx="3"/><path d="M11 14v-3a5 5 0 0 1 10 0v3"/></svg></div>
+      <h1>Enter your code</h1>
+      <p class="sub">This ClearSave is private.</p>
+    </div>
+    <form class="glass pill" id="lockForm" autocomplete="off">
+      <input id="code" type="password" placeholder="Access code" aria-label="Access code" autocomplete="current-password">
+      <button type="submit" class="btn primary go-sm">Unlock</button>
+    </form>
+    <p class="msg" id="lockMsg"></p>
+  </section>
+
+  <!-- 1. paste -->
+  <section class="screen on" id="s-paste">
+    <div class="hero">
+      <div class="logo"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5v16m0 0-6-6m6 6 6-6M7 26h18"/></svg></div>
+      <h1>Paste a link.<br>Get the original.</h1>
+      <p class="sub">Full-quality video and audio from YouTube, X and Instagram.<br>No ads. No re-compression. No fuss.</p>
+    </div>
+    <form class="glass pill" id="form" autocomplete="off">
+      <input id="url" type="text" inputmode="url" placeholder="Paste a video link" aria-label="Video link" spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button type="button" class="btn glass paste" id="pasteBtn" aria-label="Paste from clipboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1.5"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg><span>Paste</span>
+      </button>
+      <button type="submit" class="btn primary go-sm">Fetch</button>
+    </form>
+    <p class="msg" id="msg" role="status"></p>
+    <p class="foot">For personal use. You're responsible for what you download.<br>Files are deleted from the server right after you save them.</p>
+  </section>
+
+  <!-- 2. loading -->
+  <section class="screen" id="s-load">
+    <div class="center"><div class="spinner"></div><p>Reading the link…</p></div>
+  </section>
+
+  <!-- 3. options -->
+  <section class="screen" id="s-opts">
+    <button class="btn glass small back" id="back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>New link</button>
+    <div class="glass card opts">
+
+      <div class="opt-left">
+        <div class="top">
+          <img class="thumb" id="thumb" alt="">
+          <div class="meta"><h2 id="title"></h2><p id="chan"></p></div>
+        </div>
+        <div class="glass seg mini" id="mode" data-pos="0" role="tablist" hidden>
+          <div class="thumbpill"></div>
+          <button role="tab" aria-selected="true" data-mode="single">This video</button>
+          <button role="tab" aria-selected="false" data-mode="playlist" id="mode-pl">Whole playlist</button>
+        </div>
+        <div id="pl-wrap" hidden>
+          <div class="pl-head"><span id="pl-count"></span><button class="btn glass small" id="pl-all" type="button">Select all</button></div>
+          <div class="pl-list glass" id="pl-list"></div>
+        </div>
+      </div>
+
+      <div class="opt-right">
+        <div class="glass seg" id="seg" data-pos="0" role="tablist">
+          <div class="thumbpill"></div>
+          <button role="tab" aria-selected="true" data-kind="video">Video</button>
+          <button role="tab" aria-selected="false" data-kind="audio">Audio</button>
+        </div>
+
+        <div id="p-video">
+          <div class="label">Quality</div><div class="chips" id="q-video"></div>
+          <div class="label">Format</div><div class="chips" id="f-video"></div>
+        </div>
+        <div id="p-audio" hidden>
+          <div class="label">Format</div><div class="chips" id="f-audio"></div>
+          <div id="br-wrap"><div class="label">Quality</div><div class="chips" id="q-audio"></div></div>
+          <div class="row" id="cover-row">
+            <div>Embed cover art<small>Adds the thumbnail to the file</small></div>
+            <button class="switch" id="cover" role="switch" aria-checked="true" aria-label="Embed cover art"></button>
+          </div>
+          <p class="note" id="a-note"></p>
+        </div>
+
+        <div id="trim-wrap">
+          <div class="row">
+            <div>Trim<small>Save just a section</small></div>
+            <button class="switch" id="trim" role="switch" aria-checked="false" aria-label="Trim"></button>
+          </div>
+          <div class="times" id="times" hidden>
+            <label>Start<input id="t-start" inputmode="numeric" placeholder="0:00" autocomplete="off"></label>
+            <label>End<input id="t-end" inputmode="numeric" placeholder="end" autocomplete="off"></label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <span class="est" id="est"></span>
+          <button class="btn primary" id="go">Download</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 4. progress -->
+  <section class="screen" id="s-prog">
+    <div class="center">
+      <div class="ring" id="ring">
+        <svg viewBox="0 0 120 120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5ac8fa"/><stop offset="1" stop-color="#0a84ff"/></linearGradient></defs>
+          <circle class="track" cx="60" cy="60" r="52"/><circle class="bar" id="bar" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+        <div class="pct" id="pct">0%</div>
+      </div>
+      <div class="ptitle" id="ptitle">Starting…</div>
+      <div class="psub" id="psub"></div>
+    </div>
+  </section>
+
+  <!-- 5. done -->
+  <section class="screen" id="s-done">
+    <div class="center">
+      <div class="done-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <div class="ptitle" id="dtitle">Saved</div>
+      <div class="psub" id="dsub">Check your Downloads folder.</div>
+      <button class="btn primary save-btn" id="saveBtn" hidden>Save to iPhone</button>
+      <button class="skip" id="skipBtn" hidden>Done</button>
+    </div>
+  </section>
+
+</div></main>
+
+<script src="/app.js"></script>
+</body>
+</html>
