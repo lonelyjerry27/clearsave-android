@@ -23,6 +23,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 3. Open ClearSave. The first start unpacks the engine and updates yt-dlp, which takes a little while.
 
 ## Notes
+- YouTube's video links are tied to your connection and can return `403 Forbidden` mid-download (Wi-Fi/mobile-data switch, expiry, throttling). The app retries up to twice with fresh links and resumes the partial file. After a failure, **Copy details for support** copies the phone model, versions and recent log lines to the clipboard.
 - 64-bit ARM only (`arm64-v8a`), which covers practically every phone from the last several years.
 - The APK is about 40 MB because Python, QuickJS and ffmpeg ship inside it; the app unpacks them (and updates yt-dlp) on first start.
 - Tested on an Android 14 emulator: YouTube (all qualities including 4K), MP3 with cover art, MP4 merge, trim, playlist ZIP, X and Instagram links, Share-to-app, dark mode.

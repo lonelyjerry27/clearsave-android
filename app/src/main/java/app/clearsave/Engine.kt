@@ -94,8 +94,14 @@ object Engine {
     }
 
     /** Runs a download. [onLine] receives every output line from yt-dlp so progress can be tracked. */
-    fun run(url: String, tokens: List<String>, processId: String, onLine: (String, Long) -> Unit): YoutubeDLResponse =
-        YoutubeDL.getInstance().execute(build(url, tokens), processId) { _, eta, line -> onLine(line, eta) }
+    fun run(url: String, tokens: List<String>, processId: String, onLine: (String, Long) -> Unit): YoutubeDLResponse {
+        val req = build(url, tokens)
+        Log.i(TAG, "yt-dlp command: ${req.buildCommand().joinToString(" ")}")
+        return YoutubeDL.getInstance().execute(req, processId) { _, eta, line ->
+            if (!line.startsWith("[download]") || !line.contains("%")) Log.i(TAG, "yt-dlp: $line")   // skip the noisy progress ticks
+            onLine(line, eta)
+        }
+    }
 
     fun cancel(processId: String) {
         YoutubeDL.getInstance().destroyProcessById(processId)

@@ -139,6 +139,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /** Puts device info and the last downloader output on the clipboard so it can be pasted into a bug report. */
+        @JavascriptInterface
+        fun copyDiagnostics() {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("ClearSave details", Api.diagnostics(applicationContext)))
+        }
+
         @JavascriptInterface
         fun paste(): String {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

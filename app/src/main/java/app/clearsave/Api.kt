@@ -2,7 +2,10 @@ package app.clearsave
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.os.Build
 import androidx.core.content.ContextCompat
+import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,8 +39,18 @@ class Job(val id: String) {
     @Volatile var item: Int? = null
     @Volatile var indet = false
     @Volatile var count = 1
+    @Volatile var note: String? = null
+
+    // the last lines yt-dlp printed, so "Copy details" can hand them over when something fails
+    private val lines = ArrayDeque<String>()
+    fun appendLog(s: String) = synchronized(lines) {
+        lines.addLast(s.take(600))
+        while (lines.size > 80) lines.removeFirst()
+    }
+    fun logText(): String = synchronized(lines) { lines.joinToString("\n") }
 
     fun toJson(): JSONObject = JSONObject().apply {
+        put("note", note ?: JSONObject.NULL)
         put("phase", phase)
         put("pct", pct)
         put("speed", speed ?: JSONObject.NULL)
@@ -60,6 +73,28 @@ object Api {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, Job>()
     private val lock = Any()
+    @Volatile private var lastJob: Job? = null
+
+    /** Device, versions and the last yt-dlp output: what's needed to work out why a download failed. */
+    fun diagnostics(app: Context): String {
+        val ytdlp = try { YoutubeDL.getInstance().version(app) ?: "?" } catch (e: Throwable) { "?" }
+        val appVersion = try { app.packageManager.getPackageInfo(app.packageName, 0).versionName } catch (e: Throwable) { "?" }
+        return buildString {
+            appendLine("ClearSave $appVersion | Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) | ${Build.MANUFACTURER} ${Build.MODEL}")
+            appendLine("yt-dlp $ytdlp")
+            val j = lastJob
+            if (j == null) append("No download has run yet.") else {
+                appendLine("phase=${j.phase} error=${j.error}")
+                append(j.logText())
+            }
+        }
+    }
+
+    private fun isRetryable(e: Throwable): Boolean {
+        val m = (e.message ?: "").lowercase()
+        return listOf("403", "forbidden", "timed out", "timeout", "connection", "reset by peer", "unable to connect",
+            "unable to download", "network", "proxy", "http error 5", "ssl", "unreachable").any { it in m }
+    }
 
     private val hosts = mapOf(
         "youtube" to setOf("youtube.com", "youtu.be", "youtube-nocookie.com"),
@@ -299,6 +334,7 @@ object Api {
             if (activeCount() >= 1) throw ApiError(503, "A download is already running. Please wait for it to finish.")
             job = Job(UUID.randomUUID().toString().replace("-", ""))
             jobs[job.id] = job
+            lastJob = job
         }
         ContextCompat.startForegroundService(app, Intent(app, DownloadService::class.java))
         scope.launch {
@@ -364,7 +400,8 @@ object Api {
             var itemPos = 1
 
             job.phase = "downloading"
-            Engine.run(plUrl ?: url, t, job.id) { line, eta ->
+            val onLine: (String, Long) -> Unit = { line, eta ->
+                if (!line.startsWith("[download]") || !line.contains("%")) job.appendLog(line)
                 itemRe.find(line)?.let { itemPos = it.groupValues[1].toInt(); streamIdx = 0; job.item = itemPos }
                 if (line.contains("[download] Destination:")) streamIdx++
                 if (convRe.containsMatchIn(line)) {
@@ -385,6 +422,37 @@ object Api {
                     }
                 }
             }
+
+            // YouTube's video links are tied to your connection and can start returning 403 mid-download
+            // (Wi-Fi <-> mobile data switch, link expiry, throttling). On such errors, ask for fresh links and
+            // resume: yt-dlp keeps the .part files, so a retry continues where the last attempt stopped.
+            val common = listOf("--retries", "10", "--fragment-retries", "10")
+            val attempts = listOf(
+                emptyList(),
+                common + "--force-ipv4",
+                common + listOf("--force-ipv4", "--extractor-args", "youtube:player_client=tv,web_safari,mweb"),
+            )
+            val debuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            var failure: Throwable? = null
+            for ((n, extra) in attempts.withIndex()) {
+                try {
+                    streamIdx = 0; itemPos = 1
+                    job.note = if (n == 0) null else "Connection hiccup, retrying ($n of ${attempts.size - 1})"
+                    // test hook (debug builds only): make the first attempt fail so the retry path can be exercised
+                    val testBreak = if (n == 0 && debuggable && spec.optBoolean("_testFailFirst")) listOf("--proxy", "http://127.0.0.1:9") else emptyList()
+                    val args = t + extra + testBreak
+                    job.appendLog("attempt ${n + 1}: ${args.joinToString(" ")}")
+                    Engine.run(plUrl ?: url, args, job.id, onLine)
+                    failure = null
+                    break
+                } catch (e: Throwable) {
+                    failure = e
+                    job.appendLog("attempt ${n + 1} failed: ${e.message?.take(600)}")
+                    if (n == attempts.lastIndex || !isRetryable(e)) break
+                }
+            }
+            job.note = null
+            failure?.let { throw it }
 
             // --- collect results
             val files = (outDir.listFiles() ?: emptyArray())

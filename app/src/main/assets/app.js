@@ -40,6 +40,13 @@ const esc = t => String(t||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
 const LINK_RE = /youtu|twitter\.com|x\.com|instagram|instagr\.am/i;
 
 function setMsg(t, err){ const m=$('#msg'); m.textContent=t||''; m.className='msg'+(err?' err':''); }
+// Android app only: after a failed download, offer to copy the technical details (device, versions, last log lines)
+function addDetails(){
+  if(!NATIVE) return;
+  const b = document.createElement('button'); b.className = 'skip'; b.textContent = 'Copy details for support';
+  b.onclick = () => { window.CSNative.copyDiagnostics(); b.textContent = 'Copied. Paste it into your message.'; };
+  $('#msg').append(document.createElement('br'), b);
+}
 function reset(){ clearInterval(S.timer); S.info=null; S.jobId=null; $('#url').value=''; setMsg(''); show('paste'); if(!IOS && !NATIVE) $('#url').focus(); }
 function setSeg(seg, idx, attr, val){
   seg.dataset.pos = idx;
@@ -243,13 +250,13 @@ async function poll(){
     if(d.phase==='downloading'){
       if(d.indet) setRing(1,true); else setRing(d.pct||0);
       $('#ptitle').textContent = 'Downloading';
-      $('#psub').textContent = [item, d.speed?fmtBytes(d.speed)+'/s':'', d.eta?d.eta+'s left':''].filter(Boolean).join(' · ');
+      $('#psub').textContent = [item, d.speed?fmtBytes(d.speed)+'/s':'', d.eta?d.eta+'s left':'', d.note].filter(Boolean).join(' · ');
     } else if(d.phase==='converting'){
       if(d.indet){ setRing(1,true); } else { setRing(d.pct||0); }
       $('#ptitle').textContent = d.items ? (d.indet?'Packing your zip':'Converting') : S.kind==='audio' ? 'Converting' : 'Merging in full quality';
-      $('#psub').textContent = [item, d.indet?'Almost there…':''].filter(Boolean).join(' · ');
+      $('#psub').textContent = [item, d.indet?'Almost there…':'', d.note].filter(Boolean).join(' · ');
     } else if(d.phase==='error'){
-      clearInterval(S.timer); show('paste'); setMsg(d.error||'Download failed.', true);
+      clearInterval(S.timer); show('paste'); setMsg(d.error||'Download failed.', true); addDetails();
     } else if(d.phase==='done'){
       clearInterval(S.timer); finish(d);
     }
