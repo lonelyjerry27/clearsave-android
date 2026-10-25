@@ -3,6 +3,7 @@ package app.clearsave
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.yausername.youtubedl_android.YoutubeDL
@@ -13,7 +14,9 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.net.URLDecoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -40,6 +43,8 @@ class Job(val id: String) {
     @Volatile var indet = false
     @Volatile var count = 1
     @Volatile var note: String? = null
+    @Volatile var location: String? = null
+    @Volatile var coverNote: String? = null
 
     // the last lines yt-dlp printed, so "Copy details" can hand them over when something fails
     private val lines = ArrayDeque<String>()
@@ -51,6 +56,8 @@ class Job(val id: String) {
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("note", note ?: JSONObject.NULL)
+        put("location", location ?: JSONObject.NULL)
+        put("coverNote", coverNote ?: JSONObject.NULL)
         put("phase", phase)
         put("pct", pct)
         put("speed", speed ?: JSONObject.NULL)
@@ -90,6 +97,11 @@ object Api {
         }
     }
 
+    private fun hasEmbeddedCover(f: File): Boolean = try {
+        val r = MediaMetadataRetriever()
+        try { r.setDataSource(f.absolutePath); r.embeddedPicture != null } finally { r.release() }
+    } catch (e: Throwable) { false }
+
     private fun isRetryable(e: Throwable): Boolean {
         val m = (e.message ?: "").lowercase()
         return listOf("403", "forbidden", "timed out", "timeout", "connection", "reset by peer", "unable to connect",
@@ -119,7 +131,7 @@ object Api {
         when {
             path == "/api/config" ->
                 200 to JSONObject().put("locked", false).put("authed", true).put("maxPlaylist", 50).put("maxMinutes", 0).toString()
-            path == "/api/info" -> 200 to info(JSONObject(body).optString("url")).toString()
+            path == "/api/info" -> 200 to info(app, JSONObject(body).optString("url")).toString()
             path == "/api/download" -> 200 to download(app, JSONObject(body)).toString()
             path.startsWith("/api/progress/") -> 200 to progress(path.removePrefix("/api/progress/")).toString()
             else -> throw ApiError(404, "Not found.")
@@ -260,7 +272,46 @@ object Api {
             .put("videos", JSONArray()).put("playlist", pl)
     }
 
-    private suspend fun info(raw: String): JSONObject {
+    // What the link lookup learned about a YouTube video, kept so the download doesn't have to redo it.
+    // Rebuilding that (Python start-up, YouTube requests, solving YouTube's JavaScript puzzle) costs 10+ seconds on a phone.
+    private val infoCache = ConcurrentHashMap<String, Pair<File, Long>>()
+    private const val INFO_MAX_AGE_MS = 20 * 60_000L
+
+    /** First of YouTube's cover-image sizes that exists. yt-dlp would otherwise try ~40 variants one by one. */
+    private fun pickThumbnail(id: String?): String? {
+        if (id == null) return null
+        for (name in listOf("maxresdefault", "hq720", "sddefault", "hqdefault")) {
+            val u = "https://i.ytimg.com/vi/$id/$name.jpg"
+            try {
+                val c = URL(u).openConnection() as HttpURLConnection
+                c.requestMethod = "HEAD"; c.connectTimeout = 4000; c.readTimeout = 4000
+                val ok = c.responseCode == 200
+                c.disconnect()
+                if (ok) return u
+            } catch (_: Exception) {
+            }
+        }
+        return null
+    }
+
+    private fun cacheInfo(app: Context, url: String, data: JSONObject) {
+        try {
+            val thumb = pickThumbnail(data.str("id"))
+            if (thumb != null) {   // leave only the verified cover, so embedding it can't miss
+                data.put("thumbnails", JSONArray().put(JSONObject().put("url", thumb).put("id", "cover").put("preference", 0)))
+                data.put("thumbnail", thumb)
+            }
+            val dir = File(app.cacheDir, "info").apply { mkdirs() }
+            val now = System.currentTimeMillis()
+            dir.listFiles()?.filter { now - it.lastModified() > 3600_000L }?.forEach { it.delete() }
+            val f = File(dir, "${UUID.randomUUID()}.json")
+            f.writeText(data.toString())
+            infoCache[url] = f to now
+        } catch (_: Exception) {   // caching is only an optimisation
+        }
+    }
+
+    private suspend fun info(app: Context, raw: String): JSONObject {
         val (url, platform) = detect(raw) ?: throw ApiError(400, "That doesn't look like a YouTube, X or Instagram link.")
         Engine.await()
         val path = try { URI(url).path ?: "" } catch (e: Exception) { "" }
@@ -271,8 +322,11 @@ object Api {
                 return playlistOnly(playlistPayload(Engine.json(url, flat), url, platform), platform, url)
             }
             if (platform == "youtube") {
-                val out = singlePayload(Engine.json(url, listOf("--no-playlist")), url, platform)
+                val data = Engine.json(url, listOf("--no-playlist"))
+                val out = singlePayload(data, url, platform)
                 if (out.optBoolean("is_live")) throw ApiError(400, "Live streams can't be downloaded.")
+                cacheInfo(app, url, data)
+                data.str("thumbnail")?.let { out.put("thumbnail", it) }
                 if (plId != null && !plId.startsWith("RD") && !plId.startsWith("LL") && !plId.startsWith("WL")) {
                     try {   // skip auto-mixes and private lists
                         val plUrl = "https://www.youtube.com/playlist?list=$plId"
@@ -377,11 +431,16 @@ object Api {
                     val br = spec.optInt("bitrate", 0)
                     t += listOf("--audio-quality", if (br > 0) "${br}K" else "0")
                 }
-                t += "--embed-metadata"
+                // each file gets its own album (otherwise Android names it after the folder and music apps
+                // show one shared cover for everything saved there)
+                t += listOf("--embed-metadata", "--parse-metadata", "%(title)s:%(meta_album)s")
                 if (spec.optBoolean("cover") && fmt.cover) t += listOf("--embed-thumbnail", "--convert-thumbnails", "jpg")
             } else {
                 val h = if (spec.isNull("height")) 0 else spec.optInt("height", 0)
-                val sel = if (h > 0) "bv*[height<=$h]+ba/b[height<=$h]/bv*+ba/b" else "bv*+ba/b"
+                // Above 1080p YouTube only has VP9 and AV1. Phones decode AV1 poorly or not at all (black picture,
+                // sound only), and HDR looks wrong without an HDR screen, so prefer VP9 and SDR, and fall back if absent.
+                val cap = if (h > 0) "[height<=$h]" else ""
+                val sel = "bv*$cap[vcodec!^=av01][dynamic_range=SDR]+ba/bv*$cap[vcodec!^=av01]+ba/bv*$cap+ba/b$cap/bv*+ba/b"
                 val sort = mutableListOf("res", "fps", "hdr:12")
                 when (format) {
                     "mp4" -> sort += listOf("vcodec:h264", "acodec:aac", "ext:mp4:m4a")
@@ -433,6 +492,8 @@ object Api {
                 common + listOf("--force-ipv4", "--extractor-args", "youtube:player_client=tv,web_safari,mweb"),
             )
             val debuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            val cachedInfo: File? = if (isPlaylist || platform != "youtube") null else infoCache[url]
+                ?.takeIf { System.currentTimeMillis() - it.second < INFO_MAX_AGE_MS && it.first.exists() }?.first
             var failure: Throwable? = null
             for ((n, extra) in attempts.withIndex()) {
                 try {
@@ -440,9 +501,11 @@ object Api {
                     job.note = if (n == 0) null else "Connection hiccup, retrying ($n of ${attempts.size - 1})"
                     // test hook (debug builds only): make the first attempt fail so the retry path can be exercised
                     val testBreak = if (n == 0 && debuggable && spec.optBoolean("_testFailFirst")) listOf("--proxy", "http://127.0.0.1:9") else emptyList()
-                    val args = t + extra + testBreak
+                    // First attempt reuses what the link lookup already learned; retries ask YouTube afresh.
+                    val reuse = if (n == 0) cachedInfo else null
+                    val args = t + extra + testBreak + (if (reuse != null) listOf("--load-info-json", reuse.absolutePath) else emptyList())
                     job.appendLog("attempt ${n + 1}: ${args.joinToString(" ")}")
-                    Engine.run(plUrl ?: url, args, job.id, onLine)
+                    Engine.run(if (reuse != null) emptyList() else listOf(plUrl ?: url), args, job.id, onLine)
                     failure = null
                     break
                 } catch (e: Throwable) {
@@ -482,8 +545,13 @@ object Api {
                 }
             } else final = files[0]
 
+            // did the cover art really make it into the file? say so, rather than leaving the user guessing
+            if (kind == "audio" && files.size == 1 && spec.optBoolean("cover") && audioFormats.getValue(format).cover && !hasEmbeddedCover(final)) {
+                job.coverNote = "No cover art (the thumbnail wasn't available)"
+            }
+
             job.phase = "converting"; job.indet = true
-            Saver.save(app, final, final.name)
+            job.location = Saver.save(app, final, final.name)
             job.name = final.name; job.size = final.length(); job.count = files.size
             job.pct = 1.0; job.indet = false; job.phase = "done"
         } catch (e: Throwable) {

@@ -2,6 +2,8 @@
 const $ = s => document.querySelector(s);
 // Inside the Android app the page talks to the on-phone engine through window.CSNative instead of a server.
 const NATIVE = !!window.CSNative;
+// "Lite" look on Android phones: blur layers and blend modes are what make a WebView stutter, so they're switched off there.
+if(NATIVE || (/Android/i.test(navigator.userAgent) && matchMedia('(pointer:coarse)').matches)) document.documentElement.classList.add('lite');
 const screens = ['lock','paste','load','opts','prog','done'];
 const show = n => {
   screens.forEach(k => $('#s-'+k).classList.toggle('on', k===n));
@@ -204,6 +206,11 @@ function renderOpts2(){
   const est = (S.kind==='video' && !isPl()) ? fmtBytes(d.videos.find(v=>v.height===S.height)?.size) : '';
   $('#est').textContent = est ? '≈ '+est : '';
   $('#t-end').placeholder = d.duration ? fmtDur(d.duration) : 'end';
+
+  // Android app: above 1080p YouTube has only VP9/AV1, which phones often can't play inside MP4 (picture stays black)
+  const high = NATIVE && !isPl() && S.height>1080 && S.vfmt==='mp4';
+  $('#v-note').hidden = !high;
+  if(high) $('#v-note').textContent = 'Above 1080p, YouTube only has VP9 video, which phones often can’t play inside MP4. ClearSave will save this one as WebM instead.';
 }
 $('#seg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
@@ -221,7 +228,7 @@ $('#trim').addEventListener('click', e=>{
 /* ---- download ---- */
 $('#go').addEventListener('click', async ()=>{
   const body = {url:S.info.url, kind:S.kind,
-    format: S.kind==='video'?S.vfmt:S.afmt,
+    format: S.kind==='video'?(NATIVE && curH()>1080 && S.vfmt==='mp4' ? 'webm' : S.vfmt):S.afmt,
     height: S.kind==='video'?curH():null,
     bitrate: S.kind==='audio'?S.br:null,
     cover: S.kind==='audio' && S.cover};
@@ -272,7 +279,7 @@ const meta = d => [d.name, d.count>1?d.count+' files':'', fmtBytes(d.size)].filt
 function finish(d){
   $('#dsub').textContent = meta(d);
   if(NATIVE){  // the app already saved the file into Downloads/ClearSave
-    $('#dtitle').textContent = 'Saved'; $('#dsub').textContent = meta(d) + ' · Downloads/ClearSave';
+    $('#dtitle').textContent = 'Saved'; $('#dsub').textContent = meta(d) + ' · ' + (d.location || 'Downloads/ClearSave') + (d.coverNote ? ' · ' + d.coverNote : '');
     $('#saveBtn').hidden = true; $('#skipBtn').hidden = true; show('done'); setTimeout(reset, 3200); return;
   }
   if(IOS && navigator.share) return finishIOS(d);

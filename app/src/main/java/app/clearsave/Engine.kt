@@ -66,8 +66,8 @@ object Engine {
      * Builds a request from a flat list like ["-f", "bestaudio/best", "-x", "--audio-format", "mp3"]:
      * a token starting with "-" is an option, and the token after it (if it doesn't start with "-") is its value.
      */
-    private fun build(url: String, tokens: List<String>): YoutubeDLRequest {
-        val req = YoutubeDLRequest(url)
+    private fun build(urls: List<String>, tokens: List<String>): YoutubeDLRequest {
+        val req = YoutubeDLRequest(urls)
         var i = 0
         while (i < tokens.size) {
             val t = tokens[i]
@@ -86,7 +86,7 @@ object Engine {
     /** Runs yt-dlp and parses the single JSON document it prints (used for link lookups). */
     fun json(url: String, tokens: List<String>): JSONObject {
         val res: YoutubeDLResponse = YoutubeDL.getInstance().execute(
-            build(url, listOf("--dump-single-json", "--no-warnings") + tokens)
+            build(listOf(url), listOf("--dump-single-json", "--no-warnings") + tokens)
         )
         val line = res.out.lineSequence().map { it.trim() }.lastOrNull { it.startsWith("{") }
             ?: throw IllegalStateException("The site returned nothing readable.")
@@ -94,8 +94,8 @@ object Engine {
     }
 
     /** Runs a download. [onLine] receives every output line from yt-dlp so progress can be tracked. */
-    fun run(url: String, tokens: List<String>, processId: String, onLine: (String, Long) -> Unit): YoutubeDLResponse {
-        val req = build(url, tokens)
+    fun run(urls: List<String>, tokens: List<String>, processId: String, onLine: (String, Long) -> Unit): YoutubeDLResponse {
+        val req = build(urls, tokens)
         Log.i(TAG, "yt-dlp command: ${req.buildCommand().joinToString(" ")}")
         return YoutubeDL.getInstance().execute(req, processId) { _, eta, line ->
             if (!line.startsWith("[download]") || !line.contains("%")) Log.i(TAG, "yt-dlp: $line")   // skip the noisy progress ticks

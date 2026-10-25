@@ -3,31 +3,46 @@ package app.clearsave
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
 
-/** Copies a finished file into the public Downloads/ClearSave folder. */
+/**
+ * Copies a finished file into a public folder and tells Android's media library about it.
+ * Music goes to Music/ClearSave and videos to Movies/ClearSave, where music players and galleries look.
+ * Everything else (ZIP files) goes to Downloads/ClearSave.
+ */
 object Saver {
     private const val FOLDER = "ClearSave"
+    private val audioExt = setOf("mp3", "m4a", "aac", "opus", "ogg", "flac", "wav")
+    private val videoExt = setOf("mp4", "mkv", "webm")
 
-    fun save(ctx: Context, file: File, name: String) {
-        val mime = mimeFor(name)
+    /** Returns where the file ended up, for example "Music/ClearSave". */
+    fun save(ctx: Context, file: File, name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val (collection: Uri, baseDir: String) = when (ext) {
+            in audioExt -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_MUSIC
+            in videoExt -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_MOVIES
+            else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_DOWNLOADS
+        }
+        val mime = mimeFor(ext)
+
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = ctx.contentResolver
             val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, mime)
-                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER")
-                put(MediaStore.Downloads.IS_PENDING, 1)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "$baseDir/$FOLDER")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: throw IllegalStateException("Couldn't create the file in Downloads.")
+            val uri = resolver.insert(collection, values)
+                ?: throw IllegalStateException("Couldn't create the file in $baseDir.")
             try {
                 resolver.openOutputStream(uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
                 values.clear()
-                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
             } catch (e: Exception) {
                 resolver.delete(uri, null, null)
@@ -35,12 +50,13 @@ object Saver {
             }
         } else {
             @Suppress("DEPRECATION")
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER)
-            if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("Couldn't create the Downloads/ClearSave folder.")
+            val dir = File(Environment.getExternalStoragePublicDirectory(baseDir), FOLDER)
+            if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("Couldn't create the $baseDir/$FOLDER folder.")
             val dest = uniqueFile(dir, name)
             file.copyTo(dest)
             MediaScannerConnection.scanFile(ctx, arrayOf(dest.absolutePath), arrayOf(mime), null)
         }
+        return "$baseDir/$FOLDER"
     }
 
     private fun uniqueFile(dir: File, name: String): File {
@@ -55,7 +71,7 @@ object Saver {
         return f
     }
 
-    private fun mimeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    private fun mimeFor(ext: String): String = when (ext) {
         "mp4" -> "video/mp4"
         "mkv" -> "video/x-matroska"
         "webm" -> "video/webm"

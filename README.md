@@ -4,7 +4,10 @@ The ClearSave downloader as a standalone Android app. Everything runs on the pho
 
 - **Screens:** the same web UI as `clearsave-web`, shown in a WebView.
 - **Engine:** [youtubedl-android](https://github.com/junkfood02/youtubedl-android) (yt-dlp + Python + QuickJS) and its ffmpeg module, the same engine family YTDLnis and Seal use. QuickJS is what lets yt-dlp read YouTube.
-- **Saving:** finished files go to `Downloads/ClearSave`.
+- **Saving:** music goes to `Music/ClearSave` and videos to `Movies/ClearSave` (where music players and galleries look); ZIP files go to `Downloads/ClearSave`.
+- **Cover art:** each audio file gets its own album tag plus a verified thumbnail, so music apps show a cover per song. If the thumbnail can't be added, the app says so.
+- **Above 1080p:** YouTube only has VP9/AV1 video there. VP9 inside MP4 often shows a black picture on phones, so 1440p/4K saves as WebM (VP9 + Opus). AV1 and HDR are avoided when VP9/SDR exist.
+- **Speed:** the download reuses what the link lookup already learned, instead of repeating YouTube's lookup (10+ seconds on a phone).
 - **Share to ClearSave:** share a link from YouTube, X or Instagram and ClearSave opens with it.
 
 ## Build the APK

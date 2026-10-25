@@ -11,8 +11,8 @@ android {
         applicationId = "app.clearsave"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         // 64-bit ARM covers practically every phone from the last several years and keeps the APK smaller.
         ndk { abiFilters += listOf("arm64-v8a") }
     }

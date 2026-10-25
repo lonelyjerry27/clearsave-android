@@ -228,3 +228,31 @@ h1{font-size:clamp(34px,8.5vw,56px);font-weight:700;letter-spacing:-.035em;line-
 @media (min-width:1280px){
   h1{font-size:60px}
 }
+
+/* ---------- lite mode: Android phones and the Android app ----------
+   Blurred layers, backdrop-filter and blend modes are what make a phone's WebView stutter.
+   Same look, painted with plain translucent colours instead. */
+html.lite .orb{filter:none;animation:none;opacity:.5}
+html.lite .orb.a{background:radial-gradient(circle,var(--orb1) 0%,transparent 66%)}
+html.lite .orb.b{background:radial-gradient(circle,var(--orb2) 0%,transparent 66%)}
+html.lite .orb.c{background:radial-gradient(circle,var(--orb3) 0%,transparent 66%)}
+html.lite .glass{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:linear-gradient(160deg,rgba(255,255,255,.74),rgba(255,255,255,.54));
+  box-shadow:0 4px 14px rgba(40,50,90,.10),inset 0 1px 0 var(--edge);
+}
+html.lite .glass::before{display:none}
+html.lite .actions{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(160deg,rgba(255,255,255,.88),rgba(255,255,255,.72));box-shadow:0 4px 14px rgba(40,50,90,.12),inset 0 1px 0 var(--edge)}
+@media (prefers-color-scheme:dark){
+  html.lite .glass{background:linear-gradient(160deg,rgba(255,255,255,.17),rgba(255,255,255,.09));box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 var(--edge)}
+  html.lite .actions{background:linear-gradient(160deg,rgba(40,44,70,.92),rgba(24,26,44,.88))}
+}
+html.lite .screen.on{animation:in-lite .22s ease-out both}
+@keyframes in-lite{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+html.lite .ring .bar{filter:none}
+html.lite .btn,html.lite .chip,html.lite .seg .thumbpill{transition-duration:.15s}
+/* keep the selected look in lite mode (it must beat the plain lite background above) */
+html.lite .chip[aria-pressed=true]{
+  background:linear-gradient(180deg,rgba(255,255,255,.3),transparent),var(--sel);
+  box-shadow:0 0 0 1.5px var(--accent),0 4px 14px rgba(10,132,255,.22),inset 0 1px 0 var(--edge);
+}
