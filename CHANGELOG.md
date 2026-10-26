@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+- **Fixed Instagram video downloads.** The "above 1080p is saved as WebM" rule is meant for YouTube, but Instagram's tall phone videos are over 1280 pixels high, so it wrongly applied to them and the download failed with "Conversion failed". The rule now applies to YouTube only. If WebM is chosen for an Instagram or X video, it is saved as MKV instead of failing.
+- Instagram and X videos are no longer affected by the YouTube-specific note.
+
 ## 1.2
 - **Fixed black video above 1080p.** 1440p and 4K are now saved as WebM (VP9 + Opus). VP9 inside MP4 shows a black picture on many phones. AV1 and HDR are avoided when VP9 and SDR exist. A note explains the switch.
 - **Fixed missing cover art.** Each audio file gets its own album tag (Android was naming the album after the folder, so music apps showed one shared cover). The cover image is chosen once and verified, and the app says when a cover couldn't be added.

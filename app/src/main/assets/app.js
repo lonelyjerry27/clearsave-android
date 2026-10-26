@@ -208,9 +208,12 @@ function renderOpts2(){
   $('#t-end').placeholder = d.duration ? fmtDur(d.duration) : 'end';
 
   // Android app: above 1080p YouTube has only VP9/AV1, which phones often can't play inside MP4 (picture stays black)
-  const high = NATIVE && !isPl() && S.height>1080 && S.vfmt==='mp4';
+  // Only YouTube: Instagram and X videos can be tall (1280p and up) yet are plain H.264, which belongs in MP4.
+  const high = !isPl() && S.height>1080 && S.vfmt==='mp4' && S.info.platform==='youtube';
   $('#v-note').hidden = !high;
-  if(high) $('#v-note').textContent = 'Above 1080p, YouTube only has VP9 video, which phones often can’t play inside MP4. ClearSave will save this one as WebM instead.';
+  if(high) $('#v-note').textContent = NATIVE
+    ? 'Above 1080p, YouTube only has VP9 video, which phones often can’t play inside MP4. ClearSave will save this one as WebM instead.'
+    : 'Above 1080p, YouTube only has VP9 video. Some players show a black picture for VP9 inside MP4. If that happens, choose WebM instead, or open the file in VLC.';
 }
 $('#seg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
@@ -228,7 +231,7 @@ $('#trim').addEventListener('click', e=>{
 /* ---- download ---- */
 $('#go').addEventListener('click', async ()=>{
   const body = {url:S.info.url, kind:S.kind,
-    format: S.kind==='video'?(NATIVE && curH()>1080 && S.vfmt==='mp4' ? 'webm' : S.vfmt):S.afmt,
+    format: S.kind==='video'?(NATIVE && S.info.platform==='youtube' && curH()>1080 && S.vfmt==='mp4' ? 'webm' : S.vfmt):S.afmt,
     height: S.kind==='video'?curH():null,
     bitrate: S.kind==='audio'?S.br:null,
     cover: S.kind==='audio' && S.cover};

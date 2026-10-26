@@ -441,12 +441,14 @@ object Api {
                 // sound only), and HDR looks wrong without an HDR screen, so prefer VP9 and SDR, and fall back if absent.
                 val cap = if (h > 0) "[height<=$h]" else ""
                 val sel = "bv*$cap[vcodec!^=av01][dynamic_range=SDR]+ba/bv*$cap[vcodec!^=av01]+ba/bv*$cap+ba/b$cap/bv*+ba/b"
+                // Instagram and X video is H.264 + AAC, which a WebM file can't hold, so WebM becomes MKV there
+                val cont = if (platform != "youtube" && format == "webm") "mkv" else format
                 val sort = mutableListOf("res", "fps", "hdr:12")
-                when (format) {
+                when (cont) {
                     "mp4" -> sort += listOf("vcodec:h264", "acodec:aac", "ext:mp4:m4a")
                     "webm" -> sort += listOf("vcodec:vp9", "acodec:opus", "ext:webm")
                 }
-                t += listOf("-f", sel, "-S", sort.joinToString(","), "--merge-output-format", format, "--embed-metadata")
+                t += listOf("-f", sel, "-S", sort.joinToString(","), "--merge-output-format", cont, "--embed-metadata")
             }
 
             // --- progress tracking from yt-dlp's output lines
