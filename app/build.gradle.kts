@@ -1,6 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Release signing details live OUTSIDE the repository and must never be committed.
+// Default location: ~/.android/clearsave-release.properties (override with the CLEARSAVE_SIGNING environment variable).
+// It holds: storeFile, storePassword, keyAlias, keyPassword.
+val signingProps = Properties().apply {
+    val f = File(System.getenv("CLEARSAVE_SIGNING") ?: "${System.getProperty("user.home")}/.android/clearsave-release.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
 }
 
 android {
@@ -17,8 +27,22 @@ android {
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
+    signingConfigs {
+        if (signingProps.isNotEmpty()) {
+            create("release") {
+                storeFile = File(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            // stays unsigned (and therefore not installable) when no signing settings file exists
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

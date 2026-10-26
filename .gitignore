@@ -7,3 +7,11 @@ local.properties
 captures/
 app/release/
 *.apk
+
+# release signing material: never commit
+*.jks
+*.keystore
+*.p12
+clearsave-release.properties
+keystore.properties
+release/
