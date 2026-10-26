@@ -45,6 +45,7 @@ class Job(val id: String) {
     @Volatile var note: String? = null
     @Volatile var location: String? = null
     @Volatile var coverNote: String? = null
+    @Volatile var saveNote: String? = null
 
     // the last lines yt-dlp printed, so "Copy details" can hand them over when something fails
     private val lines = ArrayDeque<String>()
@@ -58,6 +59,7 @@ class Job(val id: String) {
         put("note", note ?: JSONObject.NULL)
         put("location", location ?: JSONObject.NULL)
         put("coverNote", coverNote ?: JSONObject.NULL)
+        put("saveNote", saveNote ?: JSONObject.NULL)
         put("phase", phase)
         put("pct", pct)
         put("speed", speed ?: JSONObject.NULL)
@@ -553,7 +555,9 @@ object Api {
             }
 
             job.phase = "converting"; job.indet = true
-            job.location = Saver.save(app, final, final.name)
+            val saved = Saver.save(app, final, final.name)
+            job.location = saved.location
+            job.saveNote = saved.note
             job.name = final.name; job.size = final.length(); job.count = files.size
             job.pct = 1.0; job.indet = false; job.phase = "done"
         } catch (e: Throwable) {

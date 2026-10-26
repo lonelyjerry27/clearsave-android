@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3
+- **Choose where downloads are saved.** The start screen shows "Saving to …" with **Change…**, which opens Android's own folder chooser. The choice is remembered between launches, and **Use default** goes back to `Music/ClearSave` and `Movies/ClearSave`.
+- If the chosen folder is deleted or can't be written to, the file is saved in the default folder instead and the app says so.
+- The folder permission is granted through Android's folder chooser, so the app never needs broad access to your storage.
+
 ## 1.2.1
 - **Fixed Instagram video downloads.** The "above 1080p is saved as WebM" rule is meant for YouTube, but Instagram's tall phone videos are over 1280 pixels high, so it wrongly applied to them and the download failed with "Conversion failed". The rule now applies to YouTube only. If WebM is chosen for an Instagram or X video, it is saved as MKV instead of failing.
 - Instagram and X videos are no longer affected by the YouTube-specific note.

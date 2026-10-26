@@ -97,6 +97,11 @@ h1{font-size:clamp(34px,8.5vw,56px);font-weight:700;letter-spacing:-.035em;line-
 .pill .btn{padding:13px 22px}
 .msg{min-height:24px;margin-top:16px;text-align:center;font-size:14.5px;color:var(--text2)}
 .msg.err{color:var(--danger)}
+.where{margin-top:10px;text-align:center;font-size:13.5px;color:var(--text2);line-height:1.6}
+.where b{font-weight:600;color:var(--text)}
+.where button{background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:6px 4px;min-height:36px}
+.where button:hover{text-decoration:underline}
+.where button:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:6px}
 .foot{margin-top:36px;text-align:center;font-size:12.5px;color:var(--text3);line-height:1.5}
 
 /* ---------- loading / progress / done ---------- */

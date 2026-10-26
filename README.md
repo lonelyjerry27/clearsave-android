@@ -11,6 +11,7 @@ Get the latest APK from the **[Releases](../../releases/latest)** page and insta
 - **Cover art** for audio files, with each file given its own album so music apps show a cover per song.
 - **Playlists** (and multi-video X/Instagram posts) as one ZIP, **trim** to save only a section, and **Share to ClearSave** from the YouTube, X or Instagram apps.
 - Music is saved to `Music/ClearSave`, videos to `Movies/ClearSave`, ZIP files to `Downloads/ClearSave`, so your music app and gallery find them.
+- **Pick your own folder:** tap **Change…** under "Saving to …" on the start screen and choose any folder with Android's folder chooser. It is remembered, and **Use default** switches back. If the folder disappears, files go to the default folder and the app tells you.
 - If YouTube cuts a download off with a 403 error, the app fetches fresh links and resumes by itself. After a failure, **Copy details for support** copies what's needed for a bug report.
 
 ## Install

@@ -35,6 +35,19 @@ class MainActivity : AppCompatActivity() {
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
+    // "Change…" on the start screen opens Android's own folder chooser. The permission is kept for later launches.
+    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                Saver.setCustomTree(applicationContext, uri)
+            } catch (_: Exception) {   // a few providers refuse lasting access; the old choice stays
+            }
+        }
+        web.evaluateJavascript("window.__csSaveLocation && window.__csSaveLocation()", null)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -137,6 +150,24 @@ class MainActivity : AppCompatActivity() {
                 val (status, text) = Api.handle(applicationContext, path, body)
                 resolve(id, status, text)
             }
+        }
+
+        /** What the "Saving to …" line shows. */
+        @JavascriptInterface
+        fun saveLocation(): String = Saver.label(applicationContext)
+
+        @JavascriptInterface
+        fun hasCustomFolder(): Boolean = Saver.customTree(applicationContext) != null
+
+        /** Opens Android's folder chooser; the page is told when it closes. */
+        @JavascriptInterface
+        fun chooseFolder() {
+            runOnUiThread { pickFolder.launch(Saver.customTree(this@MainActivity)) }
+        }
+
+        @JavascriptInterface
+        fun resetFolder() {
+            Saver.setCustomTree(applicationContext, null)
         }
 
         /** Puts device info and the last downloader output on the clipboard so it can be pasted into a bug report. */

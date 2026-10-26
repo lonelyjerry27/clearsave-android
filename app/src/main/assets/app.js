@@ -2,6 +2,7 @@
 const $ = s => document.querySelector(s);
 // Inside the Android app the page talks to the on-phone engine through window.CSNative instead of a server.
 const NATIVE = !!window.CSNative;
+let DESKTOP = false;   // true when the Mac app's own window is showing the page (set once the server says so)
 // "Lite" look on Android phones: blur layers and blend modes are what make a WebView stutter, so they're switched off there.
 if(NATIVE || (/Android/i.test(navigator.userAgent) && matchMedia('(pointer:coarse)').matches)) document.documentElement.classList.add('lite');
 const screens = ['lock','paste','load','opts','prog','done'];
@@ -49,7 +50,7 @@ function addDetails(){
   b.onclick = () => { window.CSNative.copyDiagnostics(); b.textContent = 'Copied. Paste it into your message.'; };
   $('#msg').append(document.createElement('br'), b);
 }
-function reset(){ clearInterval(S.timer); S.info=null; S.jobId=null; $('#url').value=''; setMsg(''); show('paste'); if(!IOS && !NATIVE) $('#url').focus(); }
+function reset(){ clearInterval(S.timer); clearTimeout(S.doneTimer); S.info=null; S.jobId=null; $('#url').value=''; setMsg(''); show('paste'); if(!IOS && !NATIVE) $('#url').focus(); }
 function setSeg(seg, idx, attr, val){
   seg.dataset.pos = idx;
   seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected', b.dataset[attr]===val));
@@ -79,6 +80,9 @@ async function api(path, body){
   try{
     const c = await api('/api/config');
     S.maxPlaylist = c.maxPlaylist || 25;
+    DESKTOP = !!c.desktop;
+    if(DESKTOP) $('.foot').innerHTML = 'For personal use. You\'re responsible for what you download.<br>Everything runs on your Mac. Nothing is uploaded.';
+    renderWhere();
     if(c.locked && !c.authed){ show('lock'); $('#code').focus(); }
     else if(!IOS && !NATIVE) $('#url').focus();
   }catch{}
@@ -88,6 +92,33 @@ $('#lockForm').addEventListener('submit', async e=>{
   try{ await api('/api/login', {code:$('#code').value}); $('#code').value=''; $('#lockMsg').textContent=''; show('paste'); }
   catch(err){ $('#lockMsg').textContent = err.message; $('#lockMsg').className='msg err'; }
 });
+
+/* ---- where files are saved: Mac app and Android app ---- */
+async function renderWhere(){
+  const el = $('#where');
+  if(!DESKTOP && !NATIVE){ el.hidden = true; return; }
+  let label, custom;
+  try{
+    if(DESKTOP){ const r = await api('/api/save-folder'); label = r.label; custom = !r.default; }
+    else { label = window.CSNative.saveLocation(); custom = window.CSNative.hasCustomFolder(); }
+  }catch{ return; }
+  el.innerHTML = 'Saving to <b>' + esc(label) + '</b> · <button type="button" id="chooseDir">Change…</button>'
+    + (custom ? ' · <button type="button" id="resetDir">Use default</button>' : '');
+  el.hidden = false;
+  $('#chooseDir').onclick = chooseDir;
+  if(custom) $('#resetDir').onclick = resetDir;
+}
+async function chooseDir(){
+  if(NATIVE){ window.CSNative.chooseFolder(); return; }   // Android answers through window.__csSaveLocation
+  try{ await api('/api/save-folder/choose', {}); setMsg(''); }catch(e){ setMsg(e.message, true); }
+  renderWhere();
+}
+async function resetDir(){
+  if(NATIVE){ window.CSNative.resetFolder(); renderWhere(); return; }
+  try{ await api('/api/save-folder/reset', {}); }catch{}
+  renderWhere();
+}
+window.__csSaveLocation = renderWhere;
 
 /* ---- fetch info ---- */
 async function fetchInfo(){
@@ -108,6 +139,10 @@ $('#form').addEventListener('submit', e=>{ e.preventDefault(); fetchInfo(); });
 $('#url').addEventListener('paste', ()=> setTimeout(()=>{ if(LINK_RE.test($('#url').value)) fetchInfo(); }, 30));
 $('#pasteBtn').addEventListener('click', async ()=>{
   if(NATIVE){ const t = (window.CSNative.paste() || '').trim(); if(t){ $('#url').value = t; fetchInfo(); } else setMsg('Copy a link first, then tap Paste.'); return; }
+  if(DESKTOP){  // Mac app: read the clipboard natively, with no permission pop-up
+    try{ const t = ((await api('/api/clipboard')).text || '').trim(); if(t){ $('#url').value = t; fetchInfo(); } else setMsg('Copy a link first, then click Paste.'); }catch{}
+    return;
+  }
   try{ const t = await navigator.clipboard.readText(); $('#url').value = t.trim(); if(t.trim()) fetchInfo(); }
   catch{ $('#url').focus(); setMsg('Press ' + (/Mac|iPhone|iPad/.test(navigator.platform)?'⌘V':'Ctrl+V') + ' to paste.'); }
 });
@@ -279,11 +314,26 @@ async function poll(){
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
 const meta = d => [d.name, d.count>1?d.count+' files':'', fmtBytes(d.size)].filter(Boolean).join(' · ');
 
+// Mac app: the server puts the file in ~/Downloads/ClearSave; offer to show it in Finder
+async function finishDesktop(d){
+  $('#dtitle').textContent = 'Saving…'; $('#saveBtn').hidden = true; $('#skipBtn').hidden = true; show('done');
+  try{
+    const r = await api('/api/save-local/'+S.jobId, {});
+    $('#dtitle').textContent = 'Saved';
+    $('#dsub').textContent = [r.name, d.count>1?d.count+' files':'', fmtBytes(d.size), d.coverNote].filter(Boolean).join(' · ') + ' · ' + r.label + (r.note ? ' · ' + r.note : '');
+    $('#saveBtn').textContent = 'Show in Finder'; $('#saveBtn').hidden = false;
+    $('#saveBtn').onclick = () => api('/api/reveal', {path:r.path}).catch(()=>{});
+    $('#skipBtn').textContent = 'Done'; $('#skipBtn').hidden = false; $('#skipBtn').onclick = reset;
+    S.doneTimer = setTimeout(reset, 12000);
+  }catch(e){ show('paste'); setMsg(e.message, true); }
+}
+
 function finish(d){
   $('#dsub').textContent = meta(d);
+  if(DESKTOP) return finishDesktop(d);
   if(NATIVE){  // the app already saved the file into Downloads/ClearSave
-    $('#dtitle').textContent = 'Saved'; $('#dsub').textContent = meta(d) + ' · ' + (d.location || 'Downloads/ClearSave') + (d.coverNote ? ' · ' + d.coverNote : '');
-    $('#saveBtn').hidden = true; $('#skipBtn').hidden = true; show('done'); setTimeout(reset, 3200); return;
+    $('#dtitle').textContent = 'Saved'; $('#dsub').textContent = meta(d) + ' · ' + (d.location || 'Downloads/ClearSave') + (d.coverNote ? ' · ' + d.coverNote : '') + (d.saveNote ? ' · ' + d.saveNote : '');
+    $('#saveBtn').hidden = true; $('#skipBtn').hidden = true; show('done'); setTimeout(reset, d.saveNote ? 7000 : 3200); return;
   }
   if(IOS && navigator.share) return finishIOS(d);
   // Mac/PC/Android: the browser saves straight to Downloads, then we go back to the start
@@ -330,5 +380,6 @@ window.__csShared = text => {
   if(!m || !$('#s-paste').classList.contains('on') && !$('#s-opts').classList.contains('on')) return;
   $('#url').value = m[0]; fetchInfo();
 };
-if(NATIVE) $('.foot').innerHTML = 'For personal use. You\'re responsible for what you download.<br>Everything runs on your phone. Nothing is uploaded.';
+if(NATIVE) renderWhere();
+if(NATIVE) $('.foot').innerHTML ='For personal use. You\'re responsible for what you download.<br>Everything runs on your phone. Nothing is uploaded.';
 })();
